@@ -34,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const user = users[currentUser] || {};
     const messages = user.messages || [];
 
-    messagesContainer.innerHTML = ''; // clear
-    messages.forEach(msg => addMessageToFeed(msg));
+    messagesContainer.innerHTML = '';
+    messages.forEach((msg, index) => addMessageToFeed(msg, index));
   }
 
   function escapeHTML(str) {
@@ -45,17 +45,21 @@ document.addEventListener('DOMContentLoaded', () => {
     })[match]);
   }
 
-  function addMessageToFeed(text) {
+  function addMessageToFeed(msgObj, index) {
     const card = document.createElement('div');
     card.className = 'message-card';
+    card.dataset.index = index;
+
     card.innerHTML = `
-      <p class="message-text">${escapeHTML(text)}</p>
+      <p class="message-text">${escapeHTML(msgObj.text)}</p>
       <div class="actions">
         <button class="heart-btn"><i class="fas fa-heart"></i> Reply</button>
         <button class="pin-btn">📌 Pin</button>
         <button class="delete-btn"><i class="fas fa-trash"></i></button>
       </div>
-      <div class="replies-container" style="margin-top: 10px;"></div>
+      <div class="replies-container" style="margin-top: 10px;">
+        ${msgObj.replies.map(reply => `<div class="reply-message">Reply: ${escapeHTML(reply)}</div>`).join('')}
+      </div>
       <div class="reply-input-container" style="display: none;">
         <input type="text" class="reply-input" placeholder="Type a reply...">
         <button class="send-reply-btn">Send Reply</button>
@@ -66,14 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function addCardActions(card) {
-    // Toggle heart button for liking
+    // Like (toggle reply input)
     card.querySelector('.heart-btn').addEventListener('click', function () {
       this.classList.toggle('active');
       const replyContainer = card.querySelector('.reply-input-container');
       replyContainer.style.display = replyContainer.style.display === 'none' ? 'block' : 'none';
     });
 
-    // Pin a message
+    // Pin
     card.querySelector('.pin-btn').addEventListener('click', function () {
       const isPinned = card.classList.toggle('pinned');
       const parent = card.parentElement;
@@ -86,33 +90,43 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Delete a message
+    // Delete
     card.querySelector('.delete-btn').addEventListener('click', function () {
+      const index = parseInt(card.dataset.index);
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      const currentUser = localStorage.getItem('currentUser');
+
+      users[currentUser].messages.splice(index, 1);
+      localStorage.setItem('users', JSON.stringify(users));
+
       card.style.opacity = '0.5';
       setTimeout(() => card.remove(), 400);
     });
 
-    // Reply action
+    // Reply
     card.querySelector('.send-reply-btn').addEventListener('click', function () {
       const replyInput = card.querySelector('.reply-input');
       const replyText = replyInput.value.trim();
-
       if (replyText === '') return;
 
-      // Create and append the reply as a message underneath the main message
+      const index = parseInt(card.dataset.index);
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      const currentUser = localStorage.getItem('currentUser');
+
+      users[currentUser].messages[index].replies.push(replyText);
+      localStorage.setItem('users', JSON.stringify(users));
+
       const replyContainer = card.querySelector('.replies-container');
       const replyMessage = document.createElement('div');
       replyMessage.className = 'reply-message';
-      replyMessage.textContent = `Reply: ${escapeHTML(replyText)}`;
+      replyMessage.textContent = `Reply: ${replyText}`;
       replyContainer.appendChild(replyMessage);
 
-      // Clear the reply input field
       replyInput.value = '';
       alert('Reply added!');
     });
   }
 
-  // Avatar picker
   document.querySelectorAll('.avatar-choice').forEach(choice => {
     choice.addEventListener('click', () => {
       document.querySelectorAll('.avatar-choice').forEach(c => c.classList.remove('selected'));
@@ -121,25 +135,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Login
-  document.getElementById('go-login').addEventListener('click', () => {
-    showPage('login');
-  });
+  document.getElementById('go-login').addEventListener('click', () => showPage('login'));
 
   document.getElementById('login-btn').addEventListener('click', () => {
     const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password')?.value.trim(); // เช็คว่ามี input password ไหม
+    const password = document.getElementById('password')?.value.trim();
     if (!username || !password) return alert('Please enter both username and password');
 
     const users = JSON.parse(localStorage.getItem('users') || '{}');
 
-    // ถ้ามี user เดิม ต้องตรวจรหัสผ่าน
     if (users[username]) {
-      if (users[username].password !== password) {
-        return alert('Incorrect password!');
-      }
+      if (users[username].password !== password) return alert('Incorrect password!');
     } else {
-      // ถ้าเป็น user ใหม่
       users[username] = {
         password: password,
         avatarColor: selectedAvatarColor,
@@ -153,18 +160,9 @@ document.addEventListener('DOMContentLoaded', () => {
     showPage('feed');
   });
 
-  document.getElementById('back-home').addEventListener('click', () => {
-    showPage('home');
-  });
-
-  document.getElementById('go-profile').addEventListener('click', () => {
-    showPage('profile');
-  });
-
-  document.getElementById('back-feed').addEventListener('click', () => {
-    showPage('feed');
-  });
-
+  document.getElementById('back-home').addEventListener('click', () => showPage('home'));
+  document.getElementById('go-profile').addEventListener('click', () => showPage('profile'));
+  document.getElementById('back-feed').addEventListener('click', () => showPage('feed'));
   document.getElementById('logout-btn').addEventListener('click', () => {
     localStorage.removeItem('currentUser');
     document.getElementById('username').value = '';
@@ -183,16 +181,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const users = JSON.parse(localStorage.getItem('users'));
     const currentUser = localStorage.getItem('currentUser');
 
-    users[currentUser].messages.unshift(msg);
-    localStorage.setItem('users', JSON.stringify(users));
+    users[currentUser].messages.unshift({
+      text: msg,
+      replies: []
+    });
 
+    localStorage.setItem('users', JSON.stringify(users));
     input.value = '';
     alert('Message sent!');
     showPage('feed');
     loadMessages();
   });
 
-  // การโหลดข้อมูลอัตโนมัติเมื่อมีการล็อกอิน
   const currentUser = localStorage.getItem('currentUser');
   if (currentUser) {
     updateAvatarDisplay();
@@ -200,17 +200,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMessages();
   }
 
-  // เปิดหน้าเสิร์ช
-  document.getElementById('go-search').addEventListener('click', () => {
-    showPage('search');
-  });
+  document.getElementById('go-search').addEventListener('click', () => showPage('search'));
 
-  // การกลับไปหน้า Home จากหน้า Search
-  document.getElementById('back-home-from-search').addEventListener('click', () => {
-    showPage('home');
-  });
+  document.getElementById('back-home-from-search').addEventListener('click', () => showPage('home'));
 
-  // การค้นหาผู้ใช้
   document.getElementById('search-btn').addEventListener('click', () => {
     const input = document.getElementById('search-username').value.trim();
     if (!input) return alert('Please enter a username');
@@ -221,16 +214,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    showAnonymousSendPage(input); // เรียกฟังก์ชันแสดงหน้าส่งข้อความนิรนาม
+    showAnonymousSendPage(input);
   });
 
   function showAnonymousSendPage(targetUser) {
-    // ซ่อนทุกหน้าก่อน
     Object.values(pages).forEach(p => p.style.display = 'none');
     document.getElementById('target-username').textContent = targetUser;
     document.getElementById('anon-send-page').style.display = 'block';
 
-    // การส่งข้อความนิรนาม
     document.getElementById('anon-send-btn').onclick = () => {
       const msg = document.getElementById('anon-message').value.trim();
       if (!msg) return alert('Message cannot be empty');
@@ -241,11 +232,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      users[targetUser].messages.unshift(msg);
+      users[targetUser].messages.unshift({
+        text: msg,
+        replies: []
+      });
+
       localStorage.setItem('users', JSON.stringify(users));
 
       alert('Message sent anonymously to ' + targetUser);
-      document.getElementById('anon-message').value = ''; // เคลียร์ข้อความ
+      document.getElementById('anon-message').value = '';
     };
   }
+
+  // 🔙 ปุ่มกลับจากหน้า anonymous ส่งข้อความ
+  document.getElementById('back-from-anon-send').addEventListener('click', () => {
+    showPage('search');
+  });
 });
